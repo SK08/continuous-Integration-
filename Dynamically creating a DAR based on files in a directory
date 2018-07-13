@@ -1,0 +1,53 @@
+Dynamically creating a DAR based on files in a directory
+Task:Customer wanted to execute custom scripting for each file that Developers drop into a shared directory.   The solution is to create an solution to automatically generate a script for each file delivered in a folder, as well as create a DAR for the files that we want to import and deploy.  Also, we only want to deploy  new / changed files that are delivered.  
+
+How will this work?Developer drops file(s) into shared folder for deployment
+Jenkins monitors the shared folder.  If file exists in folder, Jenkins generates a deployment package (DAR)
+Jenkins uploads DAR to Deployit – only new and modified files deployed by Deployit.
+Setup1.  Install the following Jenkins plugins:   workspace cleanup, filesystem trigger
+
+2.  Create a Jenkins job, with the options:
+
+Build environment – Delete workspace before builds starts
+FS Monitor plugin watches directory for files
+In Jenkins Build section – Execute Shell step:
+
+mkdir $WORKSPACE/workdir
+cat << EOF > package.py
+execfile("ext/file-importer.py")
+buildPackage("/Users/tjrandall/tmp/somedir", "wls-test", "2.1-$BUILD\_NUMBER", "$WORKSPACE/workdir" )
+EOF 
+/Users/tjrandall/training/deployit-3.9.1-cli/bin/cli.sh -username admin -password admin -f $WORKSPACE/package.py
+
+
+NOTES: In example above, /Users/tjrandall/tmp/somedir represents the folder where the .pdx files will reside
+
+Also, in the "buildPackage" step above, look at the method inside the file-importer.py script to see how the input values are used.
+
+Deployit plugin to import DAR that was created, and is in Jenkins workspace
+
+3.  Add file-importer.py to <DEPLOYIT_CLI>/ext.  (see script below)  
+
+4.  Add entries to <DEPLOYIT_SERVER>/ext/synthetic.xml:  
+
+<!-- For deploying  files from a shared folder into Deployit -->  
+<type type="dev.WlsContainer" extends="generic.Container">  
+<property name="suPassword" kind="string" password="true" required="true" hidden="false" />  
+</type>  
+
+<type type="dev.pdxFileModule" extends="generic.ExecutedScriptWithDerivedArtifact" deployable-type="dev.pdxFile" container-type="dev.WlsContainer">  
+<generate-deployable type="dev.pdxFile" extends="generic.File" />  
+<property name="createScript" default="dev/implement-file-scripts.sh" hidden="true" />  
+<property name="destroyScript" default="dev/rollback-file-scripts.sh" hidden="true"  />  
+</type>  
+
+
+5.  Add implement-file-scripts.sh and rollback-file-scripts.sh scripts to <DEPLOYIT_SERVER>/ext/dev  
+
+6.  Add a dev.WlsContainer to the appropriate host(s), and add the dev.WlsContainer(s) to the Environment.  
+
+7.  Run the Jenkins job – you should see:
+
+DAR file generated in Jenkins ($WORKSPACE/workingdir)
+Jenkins-generated DAR file in Deployit
+DAR file deployed to Environment
